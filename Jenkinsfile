@@ -35,9 +35,20 @@ pipeline {
             }
         }
 
+        stage('Generate Allure Report') {
+             steps {
+                        bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" allure:report'
+             }
+        }
+
         stage('Publish Results') {
             steps {
                 junit 'target/surefire-reports/*.xml'
+                allure([
+                                    includeProperties: false,
+                                    jdk: '',
+                                    results: [[path: 'target/allure-results']]
+                ])
             }
         }
     }
