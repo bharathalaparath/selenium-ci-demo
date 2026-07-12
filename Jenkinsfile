@@ -2,10 +2,16 @@ pipeline {
 
     agent any
 
-    tools {
-        maven 'Maven'        // We'll configure this name in Jenkins shortly
-        jdk 'JDK11'          // We'll configure this name in Jenkins shortly
-    }
+    environment {
+            MAVEN_HOME = 'C:\\Program Files\\apache-maven-3.9.14'
+            JAVA_HOME  = 'C:\\Program Files\\Java\\jdk-25.0.3'
+            PATH       = "${MAVEN_HOME}\\bin;${JAVA_HOME}\\bin;C:\\Windows\\System32"
+        }
+
+//     tools {
+//         maven 'Maven'        // configure this name in Jenkins
+//         jdk 'JDK11'          // configure this name in Jenkins
+//     }
 
     stages {
 
@@ -17,13 +23,15 @@ pipeline {
 
         stage('Build') {
             steps {
-                bat 'mvn clean compile'
+//                 bat 'mvn clean compile'
+                   bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" clean compile'
             }
         }
 
         stage('Run Tests') {
             steps {
-                bat 'mvn test'
+//                 bat 'mvn test'
+                bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" test'
             }
         }
 
