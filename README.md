@@ -17,12 +17,20 @@ Project Structure so far:-
 selenium-ci-demo/
 ├── .github/
 │   └── workflows/
-│       └── test-pipeline.yml    // GitHub Actions
+│       └── test-pipeline.yml    // GitHub Actions - updated soke + regressions
 ├── src/
 │   └── test/
-│       ├── java/tests/
-│       │   └── GoogleSearchTest.java   // Allure annotations
+│       ├── java
+│       │   ├── runners/
+│       │   │   └── SmokeTestRunner.java  // to run @smoke tests
+│       │   │   └── RegressionTestRunner.java  // @regression + smoke + edge tests
+│       │   ├── stepdefinitions/
+│       │   │   └── LoginSteps.java  // BDD steps for login scenario
+│       │   └── test/
+│       │       └──GoogleSearchTest.java   // Allure annotations
 │       └── resources/
 │           └── allure.properties       // Allure Results path configuration
-├── Jenkinsfile                  // Jenkins pipeline
-└── pom.xml                      // Allure + Surefire config, project dependencies management
+│           └── features/
+│               └── login.feature       // BDD Login scenario
+├── Jenkinsfile                  // Jenkins pipeline updated for smoke + regression test
+└── pom.xml                      // project dependencies manager
