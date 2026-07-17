@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  run-tests:
+  smoke-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,23 +26,45 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
-      - name: Run Tests
-        run: mvn clean test
+      - name: Run Smoke Tests
+        run: mvn clean test -Dtest=SmokeTestRunner
+
+      - name: Upload Smoke Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-allure-report
+          path: target/site/allure-maven-plugin/
+
+  regression-tests:
+    runs-on: ubuntu-latest
+    needs: smoke-tests                    # Only runs if smoke passes
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Run Regression Tests
+        run: mvn clean test -Dtest=RegressionTestRunner
 
       - name: Generate Allure Report
         if: always()
         run: mvn allure:report
 
-      - name: Upload Allure Report
+      - name: Upload Regression Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: allure-report
+          name: regression-allure-report
           path: target/site/allure-maven-plugin/
-
-#      - name: Upload Test Results
-#        if: always()
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: test-results
-#          path: target/surefire-reports/

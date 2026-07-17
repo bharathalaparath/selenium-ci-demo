@@ -1,7 +1,5 @@
 package stepdefinitions;
 
-package stepdefinitions;
-
 import io.github.bonigarcia.wdm.WebDriverManager;
 import io.qameta.allure.Allure;
 import org.openqa.selenium.By;
@@ -12,13 +10,12 @@ import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.Assert;
-import io.cucumber.*;
-//import io.cucumber.java.Before;
-//import io.cucumber.java.After;
-//import io.cucumber.java.en.Given;
-//import io.cucumber.java.en.When;
-//import io.cucumber.java.en.Then;
-//import io.cucumber.java.en.And;
+import io.cucumber.java.Before;
+import io.cucumber.java.After;
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.And;
 import java.time.Duration;
 
 public class LoginSteps {

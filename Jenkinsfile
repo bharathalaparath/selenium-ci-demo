@@ -8,11 +8,6 @@ pipeline {
             PATH       = "${MAVEN_HOME}\\bin;${JAVA_HOME}\\bin;C:\\Windows\\System32"
         }
 
-//     tools {
-//         maven 'Maven'        // configure this name in Jenkins
-//         jdk 'JDK11'          // configure this name in Jenkins
-//     }
-
     stages {
 
         stage('Checkout') {
@@ -21,17 +16,15 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Smoke Tests') {
             steps {
-//                 bat 'mvn clean compile'
-                   bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" clean compile'
+                bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" clean test -Dtest=SmokeTestRunner'
             }
         }
 
-        stage('Run Tests') {
+        stage('Regression Tests') {
             steps {
-//                 bat 'mvn test'
-                bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" test'
+                bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" clean test -Dtest=RegressionTestRunner'
             }
         }
 
@@ -45,9 +38,9 @@ pipeline {
             steps {
                 junit 'target/surefire-reports/*.xml'
                 allure([
-                                    includeProperties: false,
-                                    jdk: '',
-                                    results: [[path: 'target/allure-results']]
+                    includeProperties: false,
+                    jdk: '',
+                    results: [[path: 'target/allure-results']]
                 ])
             }
         }
@@ -61,7 +54,7 @@ pipeline {
             echo 'All tests passed!'
         }
         failure {
-            echo 'Tests failed — check the report'
+            echo 'Smoke Tests failed — Regression skipped, check the report'
         }
     }
 }
