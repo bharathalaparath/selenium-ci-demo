@@ -1,79 +1,52 @@
 package stepdefinitions;
 
-import io.github.bonigarcia.wdm.WebDriverManager;
+import factory.DriverFactory;
 import io.qameta.allure.Allure;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
-import io.cucumber.java.Before;
-import io.cucumber.java.After;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.When;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.And;
-import java.time.Duration;
+import pages.LoginPage;
 
 public class LoginSteps {
 
-    WebDriver driver;
-    WebDriverWait wait;
+    private static final Logger log = LoggerFactory.getLogger(LoginSteps.class);
+    private final LoginPage loginPage;
 
-    @Before
-    public void setUp() {
-        WebDriverManager.chromedriver().setup();
-
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless=new");
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
-        options.addArguments("--window-size=1920,1080");
-        options.addArguments("--incognito");
-
-        driver = new ChromeDriver(options);
-        wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+    public LoginSteps() {
+        // Hooks.setUp() (a separate @Before) always runs before any step, so the
+        // driver is already initialized by the time this constructor runs.
+        this.loginPage = new LoginPage(DriverFactory.getDriver());
     }
 
     @Given("I am on the login page")
     public void iAmOnTheLoginPage() {
-        driver.get("https://the-internet.herokuapp.com/login");
+        loginPage.open();
         Allure.step("Navigated to login page");
     }
 
     @When("I enter username {string} and password {string}")
     public void iEnterCredentials(String username, String password) {
-        WebElement usernameField = wait.until(
-                ExpectedConditions.elementToBeClickable(By.id("username"))
-        );
-        usernameField.clear();
-        usernameField.sendKeys(username);
-        driver.findElement(By.id("password")).sendKeys(password);
+        loginPage.enterUsername(username);
+        loginPage.enterPassword(password);
         Allure.step("Entered username: " + username);
     }
 
     @And("I click the login button")
     public void iClickTheLoginButton() {
-        driver.findElement(By.cssSelector("button[type='submit']")).click();
+        loginPage.clickLoginButton();
         Allure.step("Clicked login button");
     }
 
     @Then("I should see the message {string}")
     public void iShouldSeeTheMessage(String expectedMessage) {
-        WebElement message = wait.until(
-                ExpectedConditions.visibilityOfElementLocated(By.id("flash"))
-        );
-        System.out.println("Actual message: " + message.getText());
-        Assert.assertTrue(message.getText().contains(expectedMessage),
-                "Expected: " + expectedMessage + " but got: " + message.getText());
+        String actualMessage = loginPage.getFlashMessageText();
+        log.info("Actual message: {}", actualMessage);
+        Assert.assertTrue(actualMessage.contains(expectedMessage),
+                "Expected: " + expectedMessage + " but got: " + actualMessage);
         Allure.step("Verified message: " + expectedMessage);
-    }
-
-    @After
-    public void tearDown() {
-        if (driver != null) driver.quit();
     }
 }
