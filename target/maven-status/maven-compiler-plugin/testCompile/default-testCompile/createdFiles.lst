@@ -1,4 +1,0 @@
-tests\GoogleSearchTest.class
-runners\SmokeTestRunner.class
-runners\RegressionTestRunner.class
-stepdefinitions\LoginSteps.class
