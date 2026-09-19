@@ -69,10 +69,22 @@ public class DriverFactory {
     // session -- but neither browser uses Chrome's exact flag names.
     // Look up the right equivalents for FirefoxOptions and EdgeOptions.
     private static FirefoxOptions firefoxOptions() {
-        return new FirefoxOptions();
+        FirefoxOptions options = new FirefoxOptions();
+        options.addArguments("--headless=new");
+        options.addArguments("-start-maximized");
+        options.addArguments("-private");
+        return options;
+//        return new FirefoxOptions();
     }
 
     private static EdgeOptions edgeOptions() {
-        return new EdgeOptions();
+        EdgeOptions options = new EdgeOptions();
+        options.addArguments("--headless=new");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--start-maximized");
+        options.addArguments("--inprivate");
+        return options;
+//        return new EdgeOptions();
     }
 }
