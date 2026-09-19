@@ -29,6 +29,10 @@ jobs:
       - name: Run Smoke Tests
         run: mvn clean test -Dtest=SmokeTestRunner
 
+      - name: Generate Allure Report
+        if: always()
+        run: mvn allure:report
+
       - name: Upload Smoke Report
         if: always()
         uses: actions/upload-artifact@v4

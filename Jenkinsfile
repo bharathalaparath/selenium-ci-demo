@@ -24,7 +24,10 @@ pipeline {
 
         stage('Regression Tests') {
             steps {
-                bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" clean test -Dtest=RegressionTestRunner'
+                // No "clean" here — it would wipe out the Smoke stage's
+                // target/surefire-reports and target/allure-results before
+                // the Publish Results stage ever reads them.
+                bat '"C:\\Program Files\\apache-maven-3.9.14\\bin\\mvn.cmd" test -Dtest=RegressionTestRunner'
             }
         }
 
