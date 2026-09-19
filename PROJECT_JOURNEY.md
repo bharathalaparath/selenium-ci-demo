@@ -18,8 +18,10 @@ A complete build log of how this project was created, step by step — including
 5. [Phase 5 — Allure Reporting](#phase-5--allure-reporting)
 6. [Phase 6 — Shift-Left Testing (Concepts)](#phase-6--shift-left-testing-concepts)
 7. [Phase 7 — BDD with Cucumber + Test Grouping](#phase-7--bdd-with-cucumber--test-grouping)
-8. [Final Project Structure](#final-project-structure)
-9. [Command Reference Sheet](#command-reference-sheet)
+8. [Phase 8 — Reusable Framework Architecture](#phase-8--reusable-framework-architecture)
+9. [Final Project Structure](#final-project-structure)
+10. [Command Reference Sheet](#command-reference-sheet)
+11. [Key Interview Talking Points From This Build](#key-interview-talking-points-from-this-build)
 
 ---
 
@@ -724,24 +726,152 @@ A fully tagged, BDD-driven test suite where Smoke and Regression run as isolated
 
 ---
 
+## Phase 8 — Reusable Framework Architecture
+
+Everything up to Phase 7 proved the CI/BDD mechanics worked, but the test code itself still had gaps a senior-level review would flag immediately: driver setup duplicated across two classes, locators hardcoded inline, only one reporting tool, no handling for flaky UI tests, and a couple of CI bugs that had been sitting unnoticed. This phase closed those gaps.
+
+---
+
+### 🔧 Step 1: Page Object Model
+
+Added `pages/BasePage.java` (shared wait helpers) and `pages/LoginPage.java` (locators + actions for the login page). `LoginSteps.java` was rewritten to delegate to `LoginPage` instead of calling `By.id(...)` directly.
+
+**Why:** locators and driver setup were duplicated between `LoginSteps.java` and a since-deleted duplicate test class left over from Phase 1. POM means a UI change only touches one page class, not every step definition that happens to reference that element.
+
+---
+
+### 🔧 Step 2: DriverFactory + Hooks
+
+Added `factory/DriverFactory.java` — a config-driven (`browser=chrome|firefox|edge` in `config.properties`, or `-Dbrowser=...` override) driver factory backed by a `ThreadLocal<WebDriver>`, so the suite is safe to parallelize later.
+
+**Naming decision — why there's no `BaseTest.java`:** the classic Selenium+TestNG pattern puts driver setup in a `BaseTest` that every test class extends. Not possible here — `SmokeTestRunner`/`RegressionTestRunner` already extend Cucumber's `AbstractTestNGCucumberTests`, and Java doesn't allow a second base class. Cucumber's own `@Before`/`@After` hooks fill the identical role instead, so that logic lives in a new `stepdefinitions/Hooks.java`.
+
+---
+
+### ⚠️ Issue 1: Screenshot-on-Failure Looked Simple, Wasn't
+
+First instinct: catch the failure in a TestNG `ITestListener.onTestFailure`, grab the driver from `DriverFactory`, take a screenshot there.
+
+**Root cause:** by the time a TestNG listener callback fires, Cucumber has already run the scenario's `@After` hook — which quits the driver. The listener sees a closed session, not a live one.
+
+### ✅ Solution
+
+Capture the screenshot inside `Hooks.tearDown(Scenario scenario)`, *before* `DriverFactory.quitDriver()` runs, using `scenario.isFailed()` and Cucumber's own `Scenario.attach(...)`. The base64 screenshot is handed to the listener through a second `ThreadLocal<String>` (`ScreenshotUtils.LAST_FAILURE_SCREENSHOT`) — safe because the hook and the listener callback for one scenario always run on the same thread.
+
+---
+
+### 🔧 Step 3: ExtentReports Alongside Allure
+
+Added `listeners/ExtentTestNGListener.java` (a TestNG `ITestListener`, attached via `@Listeners` on both runners) and `utils/ExtentManager.java`, generating a separate report per runner: `target/extent-reports/SmokeTestRunner.html` / `RegressionTestRunner.html`.
+
+### ⚠️ Issue 2: Every Report Came Out Named `AbstractTestNGCucumberTests.html`
+
+Used `ITestNGMethod.getRealClass().getSimpleName()` to name the report per-runner. Compiled fine, read fine — but running it produced one wrongly-named report every time, no matter which runner ran.
+
+**Root cause:** `runScenario()` — the single `@Test` method both runners inherit — is *declared* on `AbstractTestNGCucumberTests`, not overridden in either subclass. `getRealClass()` returns where the method is declared, not the concrete runtime class.
+
+### ✅ Solution
+
+```java
+String runnerName = context.getAllTestMethods()[0].getInstance().getClass().getSimpleName();
+```
+
+`.getInstance().getClass()` asks the actual Java object for its runtime type — always `SmokeTestRunner` or `RegressionTestRunner`, regardless of where the method is declared.
+
+**Lesson:** this only surfaced by actually running both suites and looking in `target/extent-reports/`. Reading the code gave no hint anything was wrong — it compiled cleanly and matched what `getRealClass()` sounds like it should do.
+
+---
+
+### 🔧 Step 4: Retry Analyzer for Flaky UI Tests
+
+Added `listeners/RetryAnalyzer.java` (retries a failed scenario up to twice) and `listeners/AnnotationTransformer.java` to attach it to `runScenario()` at runtime.
+
+### ⚠️ Issue 3: `@Listeners(AnnotationTransformer.class)` Compiles, Does Nothing
+
+### ✅ Solution
+
+`IAnnotationTransformer` is explicitly excluded from the `@Listeners` mechanism — TestNG's own Javadoc says it "need[s] to be defined in XML since they have to be known before we even start looking for annotations." Registered it instead via Java's `ServiceLoader` convention:
+
+`src/test/resources/META-INF/services/org.testng.ITestNGListener`:
+```
+listeners.AnnotationTransformer
+```
+
+Verified with a deliberately-failing assertion: TestNG logged 3 attempts (1 original + 2 retries) before reporting the final failure, with a screenshot embedded in both Allure and ExtentReports.
+
+---
+
+### 🔧 Step 5: Fixed Two Existing CI Bugs
+
+Found during a structural review, not newly introduced:
+
+- **Jenkinsfile:** the Regression stage ran `mvn clean test`, and `clean` deleted the Smoke stage's `target/surefire-reports`/`target/allure-results` before the Publish Results stage ever read them — so Smoke's results were silently missing from every published report. Removed `clean` from that stage (kept on the first stage only).
+- **GitHub Actions (`test-pipeline.yaml`):** the `smoke-tests` job uploaded `target/site/allure-maven-plugin/` as an artifact but never ran `mvn allure:report` first — only `regression-tests` did. `smoke-allure-report` was always an empty artifact. Added the missing report step.
+
+---
+
+### 🔧 Step 6: Repo Hygiene
+
+No `.gitignore` existed. `target/` (compiled classes, generated reports) and the entire bundled `.allure/allure-2.25.0/` CLI distribution (108 files — likely left over from the Jenkins "Allure CLI installation" step back in Phase 5) were committed to git. Added a `.gitignore` and ran `git rm -r --cached target .allure`.
+
+---
+
+### ⚠️ Issue 4: Cross-Browser Options — Still Being Debugged
+
+First attempt at `firefoxOptions()`/`edgeOptions()` had two separate problems:
+1. `firefoxOptions()` built up a configured `FirefoxOptions` object, then `return new FirefoxOptions();` returned a fresh, unconfigured one instead — a copy-paste artifact from the original stub.
+2. All the flags used Chrome's spelling (`--headless=new`, `--incognito`, `--window-size=...`) on browsers that don't share Chrome's CLI dialect.
+
+### ✅ Solution (partial — Edge done, Firefox still open)
+
+- **Edge** (Chromium-based, so most Chrome flags carry over): fixed to `--inprivate` instead of `--incognito`. Confirmed correct.
+- **Firefox**: the discard bug is fixed, and `-private` (the correct single-dash Firefox flag) replaced `--incognito`. Still outstanding: `--headless=new` is still Chrome's flag spelling — Firefox's is `-headless` — and `-start-maximized` isn't a real Firefox argument at all. Firefox has no CLI flag for window size/maximizing; the fix is `-width`/`-height`, or calling `driver.manage().window().setSize(...)` after the driver is created (which works identically across all three browsers, so it could replace the window-size flag everywhere, not just for Firefox).
+
+**Lesson:** Chromium (Chrome + Edge) and Firefox never agreed on a CLI flag dialect — Chromium uses GNU-style `--flag=value`, Firefox uses its own older single-dash convention. There's no vendor-neutral flag for headless mode or private browsing; window size is the one exception, since `driver.manage().window()` is a WebDriver-level API, not a launch flag.
+
+### Result
+
+Chrome is fully verified end-to-end (headless, screenshots, retries, both reports). Edge's flags are correct but a live end-to-end run was blocked by this environment's network access to the Edge driver's download host — worth re-testing wherever this runs next with normal internet access. Firefox needs one more pass on the headless/window-size flags before it's actually CI-safe.
+
+---
+
 ## Final Project Structure
 
 ```
 selenium-ci-demo/
 ├── .github/
 │   └── workflows/
-│       └── test-pipeline.yml
+│       └── test-pipeline.yaml
 ├── src/
 │   └── test/
 │       ├── java/
+│       │   ├── pages/
+│       │   │   ├── BasePage.java
+│       │   │   └── LoginPage.java
+│       │   ├── factory/
+│       │   │   └── DriverFactory.java
 │       │   ├── stepdefinitions/
+│       │   │   ├── Hooks.java
 │       │   │   └── LoginSteps.java
+│       │   ├── listeners/
+│       │   │   ├── ExtentTestNGListener.java
+│       │   │   ├── RetryAnalyzer.java
+│       │   │   └── AnnotationTransformer.java
+│       │   ├── utils/
+│       │   │   ├── ConfigReader.java
+│       │   │   ├── WaitUtils.java
+│       │   │   ├── ScreenshotUtils.java
+│       │   │   └── ExtentManager.java
 │       │   └── runners/
 │       │       ├── SmokeTestRunner.java
 │       │       └── RegressionTestRunner.java
 │       └── resources/
 │           ├── features/
 │           │   └── login.feature
+│           ├── META-INF/services/
+│           │   └── org.testng.ITestNGListener
+│           ├── config.properties
+│           ├── logback.xml
 │           └── allure.properties
 ├── Jenkinsfile
 ├── pom.xml
@@ -772,9 +902,16 @@ selenium-ci-demo/
 | `mvn clean test` | Run all tests |
 | `mvn clean test -Dtest=SmokeTestRunner` | Run only the smoke suite |
 | `mvn clean test -Dtest=RegressionTestRunner` | Run only regression + edge cases |
+| `mvn clean test -Dtest=SmokeTestRunner -Dbrowser=firefox` | Run smoke suite against a different browser (no file changes needed) |
 | `mvn allure:serve` | Generate and open Allure report locally |
 | `mvn allure:report` | Generate report files (used in CI) |
 | `mvn clean install -U` | Force refresh of dependencies |
+
+ExtentReports output (generated on every run, no separate command needed):
+```
+target/extent-reports/SmokeTestRunner.html
+target/extent-reports/RegressionTestRunner.html
+```
 
 ### Jenkins
 
@@ -792,3 +929,4 @@ selenium-ci-demo/
 3. **BDD framework design** — Cucumber + TestNG, with tag-based test grouping for Smoke/Regression/Edge-case, directly supporting a Fail-Fast pipeline strategy.
 4. **Reporting strategy** — Allure integrated across all three execution contexts (local, GitHub Actions, Jenkins), including annotation-driven organization (`@Epic`, `@Story`, `@Severity`).
 5. **Shift-Left thinking applied practically** — this project's structure (early smoke gating, BDD scenarios as living documentation) is a direct implementation of Shift-Left principles, not just a talking point.
+6. **Framework architecture depth** — Page Object Model, a config-driven `DriverFactory` with `ThreadLocal` for thread-safety, dual reporting (Allure + ExtentReports) wired through TestNG listener internals, and a retry analyzer registered through Java's `ServiceLoader` mechanism rather than TestNG's normal annotation path. The kind of framework-design depth that separates "used Selenium" from "built a Selenium framework" — including two bugs (a stale-driver screenshot timing issue, a mis-attributed report name) that only surfaced by actually running the suite, not by reading the code.
