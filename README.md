@@ -15,8 +15,9 @@ This project was built incrementally as a hands-on learning exercise and reflect
 | UI Automation | Selenium WebDriver 4 |
 | Test Framework | TestNG |
 | BDD | Cucumber (cucumber-java, cucumber-testng) |
-| Driver Management | WebDriverManager (auto ChromeDriver setup) |
-| Reporting | Allure Reports |
+| Driver Management | WebDriverManager — config-driven Chrome/Firefox/Edge via `DriverFactory` |
+| Reporting | Allure Reports + ExtentReports (with failure screenshots embedded) |
+| Logging | SLF4J + Logback |
 | CI (Cloud) | GitHub Actions |
 | CI (Enterprise-style) | Jenkins (local) |
 
@@ -25,13 +26,16 @@ This project was built incrementally as a hands-on learning exercise and reflect
 ## What This Project Demonstrates
 
 - A real Selenium test automating login on [the-internet.herokuapp.com](https://the-internet.herokuapp.com/login)
+- Page Object Model (`BasePage` / `LoginPage`) — step definitions call page methods, never raw locators
+- `DriverFactory` — config-driven browser selection (Chrome/Firefox/Edge) behind a `ThreadLocal<WebDriver>`, so the suite is safe to parallelize later
 - Headless + Incognito Chrome execution, CI-safe (`--no-sandbox`, `--disable-dev-shm-usage`)
 - BDD test design using Gherkin feature files and Cucumber step definitions
 - Tagged test grouping — `@smoke`, `@regression`, `@edge-case` — run independently
 - Two parallel CI pipelines: GitHub Actions (cloud) and Jenkins (self-hosted)
 - Fail-fast pipeline design — regression only runs if smoke passes
-- Allure Reports integrated locally, in GitHub Actions, and in Jenkins
-- Pipeline-as-code for both CI tools (`test-pipeline.yml` and `Jenkinsfile`)
+- Allure + ExtentReports integrated locally, in GitHub Actions, and in Jenkins, with screenshots auto-attached on failure
+- Automatic retry for flaky UI tests via a TestNG `IRetryAnalyzer`, wired in through an `IAnnotationTransformer`
+- Pipeline-as-code for both CI tools (`test-pipeline.yaml` and `Jenkinsfile`)
 
 ---
 
@@ -41,19 +45,38 @@ This project was built incrementally as a hands-on learning exercise and reflect
 selenium-ci-demo/
 ├── .github/
 │   └── workflows/
-│       └── test-pipeline.yml        # GitHub Actions — Smoke + Regression jobs
+│       └── test-pipeline.yaml        # GitHub Actions — Smoke + Regression jobs
 ├── src/
 │   └── test/
 │       ├── java/
+│       │   ├── pages/
+│       │   │   ├── BasePage.java             # Shared wait helpers for all page objects
+│       │   │   └── LoginPage.java            # Login page locators + actions
+│       │   ├── factory/
+│       │   │   └── DriverFactory.java        # Config-driven WebDriver creation (ThreadLocal)
 │       │   ├── stepdefinitions/
-│       │   │   └── LoginSteps.java          # Cucumber step definitions
+│       │   │   ├── Hooks.java                # Cucumber @Before/@After — driver lifecycle
+│       │   │   └── LoginSteps.java           # Cucumber step definitions
+│       │   ├── listeners/
+│       │   │   ├── ExtentTestNGListener.java # Builds the ExtentReports report
+│       │   │   ├── RetryAnalyzer.java        # Retries a failed scenario up to 2x
+│       │   │   └── AnnotationTransformer.java# Wires RetryAnalyzer onto every scenario
+│       │   ├── utils/
+│       │   │   ├── ConfigReader.java         # Reads config.properties (-D overrides supported)
+│       │   │   ├── WaitUtils.java            # Centralized WebDriverWait construction
+│       │   │   ├── ScreenshotUtils.java      # Base64 screenshot capture
+│       │   │   └── ExtentManager.java        # Per-runner ExtentReports instances
 │       │   └── runners/
 │       │       ├── SmokeTestRunner.java     # Runs @smoke tagged scenarios
 │       │       └── RegressionTestRunner.java# Runs @regression + @edge-case
 │       └── resources/
 │           ├── features/
 │           │   └── login.feature            # Gherkin BDD scenarios
-│           └── allure.properties            # Allure results directory config
+│           ├── META-INF/services/
+│           │   └── org.testng.ITestNGListener # SPI registration for AnnotationTransformer
+│           ├── config.properties             # browser / base.url / wait timeout
+│           ├── logback.xml                   # Console logging format
+│           └── allure.properties             # Allure results directory config
 ├── Jenkinsfile                       # Jenkins declarative pipeline
 ├── pom.xml                           # Maven dependencies & plugins
 └── README.md
@@ -91,9 +114,20 @@ mvn clean test -Dtest=SmokeTestRunner
 mvn clean test -Dtest=RegressionTestRunner
 ```
 
+**Run against a different browser (no file changes needed):**
+```bash
+mvn clean test -Dtest=SmokeTestRunner -Dbrowser=firefox
+```
+
 **Generate and view the Allure report:**
 ```bash
 mvn allure:serve
+```
+
+**View the ExtentReports report:**
+```
+target/extent-reports/SmokeTestRunner.html
+target/extent-reports/RegressionTestRunner.html
 ```
 
 ---
@@ -118,11 +152,13 @@ Results are published using the JUnit and Allure Jenkins plugins.
 
 ## Reporting
 
-Every test run produces an **Allure Report** with:
+Every test run produces both an **Allure Report** and an **ExtentReports** report:
 - Pass/fail overview and trends
 - Tests grouped by `@Epic` / `@Story` (e.g. Login Module → Valid Login)
 - Severity tagging (`@Severity(CRITICAL)`)
 - Step-by-step execution logs (`Allure.step(...)`)
+- Screenshots automatically attached to both reports on any scenario failure
+- Smoke and Regression each get their own separate ExtentReports HTML file — they never overwrite each other
 
 ---
 
