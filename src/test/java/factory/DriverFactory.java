@@ -70,7 +70,7 @@ public class DriverFactory {
     // Look up the right equivalents for FirefoxOptions and EdgeOptions.
     private static FirefoxOptions firefoxOptions() {
         FirefoxOptions options = new FirefoxOptions();
-        options.addArguments("--headless=new");
+        options.addArguments("--headless");
         options.addArguments("-start-maximized");
         options.addArguments("-private");
         return options;
